@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JumbleGrid</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1>Jumble<span>Grid</span></h1>
+    <div id="room-badge" class="hidden">room <strong id="room-code-label"></strong></div>
+  </header>
+
+  <!-- ============ Lobby ============ -->
+  <section id="lobby">
+    <div class="card">
+      <h2>Join a game</h2>
+      <label for="name-input">Your name</label>
+      <input id="name-input" maxlength="20" autocomplete="off" placeholder="e.g. Alex">
+
+      <label for="room-input">Room code</label>
+      <div class="row">
+        <input id="room-input" maxlength="12" autocomplete="off" placeholder="e.g. WOMBAT">
+        <button id="random-room-btn" type="button" title="Random room code">🎲</button>
+      </div>
+
+      <button id="join-btn" class="primary">Join room</button>
+      <p class="hint">Share the room code (and your tunnel URL) with your friend — same code, same game.</p>
+      <p id="lobby-error" class="error"></p>
+    </div>
+  </section>
+
+  <!-- ============ Game ============ -->
+  <section id="game" class="hidden">
+    <div class="game-layout">
+      <div class="main-col">
+        <div id="scoreboard"></div>
+
+        <div id="status-bar">
+          <div id="timer" class="hidden"></div>
+          <div id="round-controls">
+            <span class="size-picker">
+              <label><input type="radio" name="size" value="4" checked> 4×4</label>
+              <label><input type="radio" name="size" value="5"> 5×5</label>
+            </span>
+            <button id="start-btn" class="primary">Start round</button>
+          </div>
+        </div>
+
+        <div id="result-banner" class="hidden"></div>
+
+        <div id="grid" class="grid-4"></div>
+
+        <form id="word-form" class="hidden">
+          <input id="word-input" autocomplete="off" spellcheck="false"
+                 placeholder="Type a word, or tap the tiles…">
+          <button type="submit" class="primary">Submit</button>
+          <button type="button" id="clear-btn">Clear</button>
+        </form>
+
+        <p id="toast" class="toast"></p>
+      </div>
+
+      <aside class="words-col">
+        <h3>Words used <span id="word-count"></span></h3>
+        <p class="hint" id="min-len-hint"></p>
+        <ul id="word-list"></ul>
+      </aside>
+    </div>
+  </section>
+
+  <script src="/client.js"></script>
+</body>
+</html>

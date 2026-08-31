@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(ls /usr/share/dict/ 2>/dev/null; ls /workspaces/JumbleGrid/.devcontainer/ 2>/dev/null && cat /workspaces/JumbleGrid/.devcontainer/*.json 2>/dev/null)",
+      "Read(//usr/share/dict/**)"
+    ]
+  }
+}
