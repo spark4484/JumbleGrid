@@ -330,8 +330,16 @@ button.rot.voted .rot-n { color: var(--accent); }
 #word-list li.cancelled .w { text-decoration: line-through; }
 #word-list li.cancelled .pts { color: var(--bad); }
 
-#word-list .w { font-weight: 700; letter-spacing: 1px; }
-#word-list .by { color: var(--muted); font-size: 0.8rem; flex: 1; }
+#word-list .w { font-weight: 700; letter-spacing: 1px; flex: 1; }
+
+#word-list li.player-head {
+  background: none;
+  border-left: none;
+  padding: 10px 2px 2px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
 #word-list .pts { color: var(--good); font-weight: 600; font-size: 0.9rem; }
 
 #word-list .veto {

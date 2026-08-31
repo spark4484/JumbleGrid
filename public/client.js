@@ -514,19 +514,23 @@
       : '';
     wordCountEl.textContent = state.words.length ? `(${state.words.length})` : '';
     wordListEl.innerHTML = '';
-    state.words.forEach((w) => {
+
+    const addWordLi = (w) => {
       const li = document.createElement('li');
       li.className = (w.playerId === playerId ? 'mine' : '') + (w.cancelled ? ' cancelled' : '');
+      if (w.cancelled) {
+        const others = state.words
+          .filter((o) => o.word === w.word && o.playerId !== w.playerId)
+          .map((o) => o.playerName);
+        li.title = `Also used by ${others.join(', ')}`;
+      }
       const wordSpan = document.createElement('span');
       wordSpan.className = 'w';
       wordSpan.textContent = w.word.toUpperCase();
-      const bySpan = document.createElement('span');
-      bySpan.className = 'by';
-      bySpan.textContent = w.playerName;
       const ptsSpan = document.createElement('span');
       ptsSpan.className = 'pts';
       ptsSpan.textContent = w.cancelled ? '✗ dup' : `+${w.points}`;
-      li.append(wordSpan, bySpan, ptsSpan);
+      li.append(wordSpan, ptsSpan);
       const x = document.createElement('button');
       x.className = 'veto';
       x.title = w.playerId === playerId ? 'Remove this word' : 'Veto this word';
@@ -534,7 +538,25 @@
       x.addEventListener('click', () => veto(w.word));
       li.appendChild(x);
       wordListEl.appendChild(li);
-    });
+    };
+
+    if (playing || !state.round) {
+      state.words.forEach(addWordLi);
+    } else {
+      // Round over — group every player's list for comparison, unique words first.
+      const order = state.result ? state.result.players : state.players;
+      for (const p of order) {
+        const head = document.createElement('li');
+        head.className = 'player-head';
+        head.textContent = `${p.name} — ${p.unpaired ?? 0} unique · ${p.cancelled ?? 0} dup` +
+          (p.roundPoints !== undefined ? ` · +${p.roundPoints} pts` : '');
+        wordListEl.appendChild(head);
+        state.words
+          .filter((w) => w.playerId === p.id)
+          .sort((a, b) => (a.cancelled - b.cancelled) || a.word.localeCompare(b.word))
+          .forEach(addWordLi);
+      }
+    }
   }
 
   function showResult() {

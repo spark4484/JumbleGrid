@@ -116,11 +116,10 @@ function rotateGrid(grid, size, dir) {
   return out;
 }
 
-// Standard Boggle scoring; 5x5 games require 4+ letter words.
+// Standard Boggle length scoring; 3+ letters on both grid sizes.
 function scoreWord(word, size) {
   const len = word.length;
-  const min = size === 5 ? 4 : 3;
-  if (len < min) return 0;
+  if (len < 3) return 0;
   if (len <= 4) return 1;
   if (len === 5) return 2;
   if (len === 6) return 3;
@@ -167,7 +166,7 @@ function publicState(room, viewerId) {
     grid: room.grid,
     roundEndsAt: room.roundEndsAt,
     round: room.round,
-    minLen: room.size === 5 ? 4 : 3,
+    minLen: 3,
     players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, score: p.score })),
     // During play you only see your own list — otherwise you could peek at
     // your opponent's words to dodge duplicates. Everything is revealed at the end.
@@ -255,9 +254,8 @@ function submitWord(room, playerId, rawWord) {
   if (Date.now() > room.roundEndsAt) return { ok: false, reason: "Time's up!" };
 
   const word = String(rawWord || '').toLowerCase().replace(/[^a-z]/g, '');
-  const minLen = room.size === 5 ? 4 : 3;
-  if (word.length < minLen) {
-    return { ok: false, reason: `Words must be at least ${minLen} letters.` };
+  if (word.length < 3) {
+    return { ok: false, reason: 'Words must be at least 3 letters.' };
   }
   // Both players may claim the same word — duplicates cancel at round end.
   if (room.words.some((w) => w.word === word && w.playerId === playerId)) {

@@ -2,6 +2,8 @@
 
 Self-hosted online Boggle game. Zero dependencies — just Node.js.
 
+![A JumbleGrid round in progress: a 5×5 letter grid with a traced word, live timer, two players' scores, and the word list panel](screenshot.png)
+
 ## Run it
 
 ```bash
@@ -32,11 +34,13 @@ code. You both join the same room code and play on the same board.
 - The ⟲ / ⟳ buttons **vote to rotate the board**; when every player votes for
   the same direction, the board rotates for everyone. Click again to withdraw.
 - During the round you see only **your own** word list (plus your opponent's
-  word *count*). At round end all lists are revealed: any word claimed by two
-  or more players is **cancelled**, and each player's remaining *unpaired*
-  words are tallied — **most unpaired words wins the round**, with points
-  (3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11) shown alongside.
-- Minimum word length: 3 letters on 4×4, 4 on 5×5. "Qu" counts as two letters.
+  word *count*). At round end everyone's list is revealed side by side —
+  unique words with their points, duplicates struck through with who else had
+  them. Any word claimed by two or more players is **cancelled**, and each
+  player's remaining *unpaired* words are tallied — **most unpaired words wins
+  the round**, with points (3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11)
+  shown alongside.
+- Minimum word length: 3 letters on both grid sizes. "Qu" counts as two letters.
 - Points from unpaired words accumulate across rounds in the same room.
 
 ## Dictionary (optional)
