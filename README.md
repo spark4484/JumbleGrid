@@ -33,6 +33,12 @@ code. You both join the same room code and play on the same board.
   narrowing as you go; if no chain exists the input flashes red (your text is kept).
 - The ⟲ / ⟳ buttons **vote to rotate the board**; when every player votes for
   the same direction, the board rotates for everyone. Click again to withdraw.
+- Two modes (picked when starting a round): **📖 dictionary** rejects fake
+  words instantly; **🚩 challenge** accepts anything traceable on the grid —
+  after the reveal, flag fishy words and everyone votes ✓ real / ✗ fake.
+  Majority removes it (scores recompute), tie goes to the **host** (★, the
+  first player who joined), and a word that survives is 🛡 shielded from
+  re-challenge.
 - During the round you see only **your own** word list (plus your opponent's
   word *count*). At round end everyone's list is revealed side by side —
   unique words with their points, duplicates struck through with who else had

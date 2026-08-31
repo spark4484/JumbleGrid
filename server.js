@@ -142,8 +142,10 @@ function getRoom(code) {
       grid: null,
       roundEndsAt: null,
       round: 0,
+      mode: dictionary ? 'dict' : 'open', // 'dict' = auto-check, 'open' = challenge after
+      hostId: null,            // first player to join; breaks challenge-vote ties
       players: new Map(),      // id -> { id, name, score, scoreBase }
-      words: [],               // { word, playerId, playerName, points, cancelled? }
+      words: [],               // { word, playerId, playerName, points, cancelled?, challenge?, defended? }
       clients: new Set(),      // SSE responses (each tagged with .viewerId)
       endTimer: null,
       rotateVotes: new Map(),  // playerId -> 'left' | 'right'
@@ -167,6 +169,8 @@ function publicState(room, viewerId) {
     roundEndsAt: room.roundEndsAt,
     round: room.round,
     minLen: 3,
+    mode: room.mode,
+    hostId: room.hostId,
     players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, score: p.score })),
     // During play you only see your own list — otherwise you could peek at
     // your opponent's words to dodge duplicates. Everything is revealed at the end.
@@ -226,7 +230,8 @@ function finishRound(room) {
   };
 }
 
-function startRound(room, size) {
+function startRound(room, size, mode) {
+  room.mode = (mode === 'open' || !dictionary) ? 'open' : 'dict';
   room.size = size === 5 ? 5 : 4;
   room.grid = rollGrid(room.size);
   room.words = [];
@@ -264,7 +269,7 @@ function submitWord(room, playerId, rawWord) {
   if (!canForm(word, room.grid, room.size)) {
     return { ok: false, reason: `"${word.toUpperCase()}" can't be traced on this grid.` };
   }
-  if (dictionary && !dictionary.has(word)) {
+  if (room.mode === 'dict' && dictionary && !dictionary.has(word)) {
     return { ok: false, reason: `"${word.toUpperCase()}" isn't in the dictionary.` };
   }
   const points = scoreWord(word, room.size);
@@ -275,8 +280,10 @@ function submitWord(room, playerId, rawWord) {
 
 function vetoWord(room, word, requesterId) {
   // During play you can only retract your own words (you can't see others').
+  // In challenge mode, removing someone else's word goes through a vote, not ✕.
   const idx = room.words.findIndex((w) =>
-    w.word === word && (room.state !== 'playing' || w.playerId === requesterId));
+    w.word === word &&
+    (room.state !== 'playing' && room.mode !== 'open' ? true : w.playerId === requesterId));
   if (idx === -1) return { ok: false, reason: 'Word not found.' };
   const [removed] = room.words.splice(idx, 1);
   if (room.state === 'ended') {
@@ -286,6 +293,61 @@ function vetoWord(room, word, requesterId) {
   }
   broadcast(room);
   return { ok: true };
+}
+
+// --- challenge mode: flag a fishy word, then everyone votes real/fake ---
+function challengeWord(room, playerId, word) {
+  const player = room.players.get(playerId);
+  if (!player) return { ok: false, reason: 'You are not in this room.' };
+  if (room.state !== 'ended') return { ok: false, reason: 'Challenges happen after the round.' };
+  if (room.mode !== 'open') return { ok: false, reason: 'No challenges in dictionary mode.' };
+  const w = room.words.find((x) => x.word === word && x.playerId !== playerId);
+  if (!w) return { ok: false, reason: 'Word not found.' };
+  if (w.cancelled) return { ok: false, reason: 'That word is already cancelled.' };
+  if (w.challenge) return { ok: false, reason: 'A vote on that word is already open.' };
+  if (w.defended) return { ok: false, reason: 'That word already survived a challenge.' };
+  w.challenge = { by: playerId, byName: player.name, votes: { [playerId]: 'fake' } };
+  setNotice(room, `${player.name} challenged "${word.toUpperCase()}" — vote real or fake!`);
+  resolveChallenge(room, w); // resolves immediately in a 1-player room
+  broadcast(room);
+  return { ok: true };
+}
+
+function voteOnChallenge(room, playerId, word, verdict) {
+  const player = room.players.get(playerId);
+  if (!player) return { ok: false, reason: 'You are not in this room.' };
+  const w = room.words.find((x) => x.word === word && x.challenge);
+  if (!w) return { ok: false, reason: 'No open vote on that word.' };
+  w.challenge.votes[playerId] = verdict === 'fake' ? 'fake' : 'real';
+  resolveChallenge(room, w);
+  broadcast(room);
+  return { ok: true };
+}
+
+// Once every player has voted: majority rules, host breaks ties.
+function resolveChallenge(room, w) {
+  const ids = [...room.players.keys()];
+  if (!ids.every((id) => w.challenge.votes[id])) return;
+  const fake = ids.filter((id) => w.challenge.votes[id] === 'fake').length;
+  const real = ids.length - fake;
+  const upper = w.word.toUpperCase();
+  let remove;
+  if (fake !== real) {
+    remove = fake > real;
+    setNotice(room, remove
+      ? `"${upper}" voted fake ${fake}–${real} — removed!`
+      : `"${upper}" voted real ${real}–${fake} — it stands.`);
+  } else {
+    remove = w.challenge.votes[room.hostId] === 'fake';
+    setNotice(room, `"${upper}" tied ${fake}–${real} — host says ${remove ? 'fake, removed!' : 'real, it stands.'}`);
+  }
+  if (remove) {
+    room.words.splice(room.words.indexOf(w), 1);
+    finishRound(room); // recompute cancellations and scores
+  } else {
+    w.challenge = null;
+    w.defended = true;
+  }
 }
 
 function voteRotate(room, playerId, dir) {
@@ -459,6 +521,7 @@ async function handle(req, res) {
           id = crypto.randomBytes(8).toString('hex');
           room.players.set(id, { id, name, score: 0, scoreBase: 0 });
         }
+        if (!room.hostId) room.hostId = id;
         broadcast(room);
         sendJson(res, 200, { ok: true, playerId: id, room: code });
         return;
@@ -468,7 +531,7 @@ async function handle(req, res) {
           sendJson(res, 403, { ok: false, reason: 'Join the room first.' });
           return;
         }
-        startRound(room, Number(body.size));
+        startRound(room, Number(body.size), body.mode);
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -489,6 +552,16 @@ async function handle(req, res) {
       case '/api/rotate': {
         const dir = body.dir === 'left' ? 'left' : 'right';
         sendJson(res, 200, voteRotate(room, body.playerId, dir));
+        return;
+      }
+      case '/api/challenge': {
+        const word = String(body.word || '').toLowerCase().replace(/[^a-z]/g, '');
+        sendJson(res, 200, challengeWord(room, body.playerId, word));
+        return;
+      }
+      case '/api/challenge-vote': {
+        const word = String(body.word || '').toLowerCase().replace(/[^a-z]/g, '');
+        sendJson(res, 200, voteOnChallenge(room, body.playerId, word, body.verdict));
         return;
       }
       default:

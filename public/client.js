@@ -149,8 +149,10 @@
   startBtn.addEventListener('click', async () => {
     const checked = document.querySelector('input[name="size"]:checked');
     const size = checked ? Number(checked.value) : 4;
+    const modeEl = document.querySelector('input[name="mode"]:checked');
+    const mode = modeEl ? modeEl.value : 'dict';
     startBtn.disabled = true;
-    const resp = await api('/api/start', { room, playerId, size });
+    const resp = await api('/api/start', { room, playerId, size, mode });
     startBtn.disabled = false;
     if (resp.ok) {
       toast('Round started!', true);
@@ -457,7 +459,8 @@
         const div = document.createElement('div');
         div.className = 'player' + (p.id === playerId ? ' me' : '');
         div.innerHTML = `<span class="pname"></span><span class="pscore">${p.score}</span>`;
-        div.querySelector('.pname').textContent = p.name;
+        div.querySelector('.pname').textContent = p.name + (p.id === state.hostId ? ' ★' : '');
+        if (p.id === state.hostId) div.title = 'Room host — breaks challenge-vote ties';
         scoreboardEl.appendChild(div);
       });
 
@@ -478,6 +481,9 @@
     roundControls.classList.toggle('hidden', playing);
     timerEl.classList.toggle('hidden', !playing);
     startBtn.textContent = state.round === 0 ? 'Start round' : 'New round';
+
+    // Mode picker only matters when a dictionary is loaded
+    $('#mode-picker').classList.toggle('hidden', !state.hasDictionary);
 
     // Rotation vote buttons
     rotateControls.classList.toggle('hidden', !playing);
@@ -503,9 +509,9 @@
 
     // Words panel — your own list during play, everyone's at round end.
     wordsTitle.textContent = playing ? 'Your words' : (state.round ? 'All words' : 'Words');
-    minLenHint.textContent =
-      `${state.minLen}+ letters · duplicate words cancel at round end` +
-      (state.hasDictionary ? '' : ' · ✕ vetoes a made-up word');
+    minLenHint.textContent = state.mode === 'open'
+      ? `${state.minLen}+ letters · duplicates cancel · no dictionary — bluff wisely, 🚩 fishy words after the round`
+      : `${state.minLen}+ letters · duplicate words cancel at round end`;
     oppCounts.textContent = playing
       ? (state.wordCounts || [])
           .filter((c) => c.id !== playerId)
@@ -531,13 +537,67 @@
       ptsSpan.className = 'pts';
       ptsSpan.textContent = w.cancelled ? '✗ dup' : `+${w.points}`;
       li.append(wordSpan, ptsSpan);
-      const x = document.createElement('button');
-      x.className = 'veto';
-      x.title = w.playerId === playerId ? 'Remove this word' : 'Veto this word';
-      x.textContent = '✕';
-      x.addEventListener('click', () => veto(w.word));
-      li.appendChild(x);
+      const ended = state.state === 'ended';
+      if (w.challenge && ended) {
+        appendChallengeRow(li, w);
+      } else {
+        if (w.defended) {
+          const shield = document.createElement('span');
+          shield.className = 'defended';
+          shield.textContent = '🛡';
+          shield.title = 'Survived a challenge';
+          li.appendChild(shield);
+        }
+        const openEnded = ended && state.mode === 'open';
+        if (w.playerId === playerId || !openEnded) {
+          const x = document.createElement('button');
+          x.className = 'veto';
+          x.title = w.playerId === playerId ? 'Remove this word' : 'Veto this word';
+          x.textContent = '✕';
+          x.addEventListener('click', () => veto(w.word));
+          li.appendChild(x);
+        } else if (!w.cancelled && !w.defended) {
+          // Challenge mode: removing someone else's word takes a vote.
+          const flag = document.createElement('button');
+          flag.className = 'veto flag';
+          flag.title = 'Fishy? Challenge this word — everyone votes';
+          flag.textContent = '🚩';
+          flag.addEventListener('click', async () => {
+            const r = await api('/api/challenge', { room, playerId, word: w.word });
+            if (!r.ok) toast(r.reason, false);
+          });
+          li.appendChild(flag);
+        }
+      }
       wordListEl.appendChild(li);
+    };
+
+    const appendChallengeRow = (li, w) => {
+      li.classList.add('challenged');
+      const row = document.createElement('div');
+      row.className = 'challenge-row';
+      const info = document.createElement('span');
+      info.className = 'challenge-info';
+      info.textContent = `🚩 ${w.challenge.byName}`;
+      row.appendChild(info);
+      const votes = w.challenge.votes || {};
+      const nameOf = (id) => {
+        const p = state.players.find((x) => x.id === id);
+        return p ? p.name : '?';
+      };
+      for (const verdict of ['real', 'fake']) {
+        const voters = Object.keys(votes).filter((id) => votes[id] === verdict).map(nameOf);
+        const btn = document.createElement('button');
+        btn.className = 'vote-btn' + (votes[playerId] === verdict ? ' voted' : '');
+        btn.textContent = (verdict === 'real' ? '✓ real' : '✗ fake') +
+          (voters.length ? ` · ${voters.join(', ')}` : '');
+        btn.addEventListener('click', async () => {
+          const r = await api('/api/challenge-vote', { room, playerId, word: w.word, verdict });
+          if (!r.ok) toast(r.reason, false);
+        });
+        row.appendChild(btn);
+      }
+      li.appendChild(row);
     };
 
     if (playing || !state.round) {

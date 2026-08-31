@@ -319,11 +319,34 @@ button.rot.voted .rot-n { color: var(--accent); }
 #word-list li {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   background: var(--panel-2);
   border-radius: 8px;
   padding: 6px 10px;
   border-left: 3px solid var(--muted);
+}
+
+#word-list li.challenged { border-left-color: var(--bad); }
+#word-list .defended { font-size: 0.85rem; }
+
+.challenge-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.challenge-info { color: var(--bad); font-size: 0.8rem; font-weight: 600; }
+.vote-btn {
+  padding: 3px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+.vote-btn.voted {
+  border-color: var(--accent);
+  background: #3a3120;
+  color: var(--accent);
 }
 #word-list li.mine { border-left-color: var(--accent); }
 #word-list li.cancelled { opacity: 0.55; }
