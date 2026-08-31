@@ -41,6 +41,12 @@ h1 span { color: var(--accent); }
 }
 #room-badge strong { color: var(--text); letter-spacing: 2px; }
 
+#conn-badge { font-size: 0.8rem; margin-left: auto; color: var(--muted); }
+#conn-badge.live { color: var(--good); }
+#conn-badge.poll { color: var(--accent); }
+#conn-badge.down { color: var(--bad); }
+#conn-badge.connecting { color: var(--muted); }
+
 /* ---------------- Lobby ---------------- */
 #lobby {
   display: flex;
@@ -167,6 +173,19 @@ button.primary:hover { background: var(--accent-dark); }
 
 #round-controls { display: flex; align-items: center; gap: 14px; }
 
+#rotate-controls { display: flex; gap: 8px; }
+button.rot {
+  padding: 6px 12px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+button.rot .rot-n { font-size: 0.75rem; color: var(--muted); }
+button.rot.voted {
+  border-color: var(--accent);
+  background: #3a3120;
+}
+button.rot.voted .rot-n { color: var(--accent); }
+
 .size-picker { display: flex; gap: 10px; color: var(--muted); }
 .size-picker label {
   display: flex;
@@ -187,6 +206,7 @@ button.primary:hover { background: var(--accent-dark); }
 
 /* ---------------- Grid ---------------- */
 #grid {
+  position: relative;
   display: grid;
   gap: 8px;
   background: var(--panel);
@@ -196,6 +216,15 @@ button.primary:hover { background: var(--accent-dark); }
 }
 .grid-4 { grid-template-columns: repeat(4, 76px); }
 .grid-5 { grid-template-columns: repeat(5, 64px); }
+
+#grid svg.trace {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none; /* arrows never block tile dragging */
+  z-index: 2;
+}
 
 #grid.empty {
   display: flex;
@@ -207,6 +236,7 @@ button.primary:hover { background: var(--accent-dark); }
 }
 
 .tile {
+  touch-action: none; /* finger-drag traces the word instead of scrolling */
   aspect-ratio: 1;
   border-radius: 10px;
   background: var(--tile-bg);
@@ -230,6 +260,11 @@ button.primary:hover { background: var(--accent-dark); }
   box-shadow: 0 3px 0 var(--accent-dark);
 }
 .tile.head { outline: 3px solid #fff; }
+.tile.candidate {
+  background: #b9d4f2;
+  border-color: #7ca6d6;
+  box-shadow: 0 3px 0 #7ca6d6;
+}
 
 /* ---------------- Word entry ---------------- */
 #word-form { display: flex; gap: 8px; width: 100%; max-width: 420px; }
@@ -245,6 +280,16 @@ button.primary:hover { background: var(--accent-dark); }
   letter-spacing: 2px;
 }
 
+#word-input.no-match {
+  border-color: var(--bad);
+  color: var(--bad);
+  animation: shake 0.25s;
+}
+@keyframes shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
 /* ---------------- Toast ---------------- */
 .toast {
   min-height: 1.4em;
@@ -256,6 +301,7 @@ button.primary:hover { background: var(--accent-dark); }
 .toast.show { opacity: 1; }
 .toast.good { color: var(--good); }
 .toast.bad { color: var(--bad); }
+.toast.info { color: var(--accent); }
 
 /* ---------------- Words list ---------------- */
 .words-col h3 { margin: 0 0 4px; }
@@ -280,6 +326,9 @@ button.primary:hover { background: var(--accent-dark); }
   border-left: 3px solid var(--muted);
 }
 #word-list li.mine { border-left-color: var(--accent); }
+#word-list li.cancelled { opacity: 0.55; }
+#word-list li.cancelled .w { text-decoration: line-through; }
+#word-list li.cancelled .pts { color: var(--bad); }
 
 #word-list .w { font-weight: 700; letter-spacing: 1px; }
 #word-list .by { color: var(--muted); font-size: 0.8rem; flex: 1; }

@@ -3,7 +3,23 @@
     "allow": [
       "Bash(npm --version)",
       "Bash(ls /usr/share/dict/ 2>/dev/null; ls /workspaces/JumbleGrid/.devcontainer/ 2>/dev/null && cat /workspaces/JumbleGrid/.devcontainer/*.json 2>/dev/null)",
-      "Read(//usr/share/dict/**)"
+      "Read(//usr/share/dict/**)",
+      "Bash(PORT=3999 node server.js > /tmp/jg.log 2>&1 & sleep 1; cat /tmp/jg.log)",
+      "Bash(kill %1)",
+      "Bash(PORT=3999 node server.js)",
+      "Bash(curl -s \"localhost:3999/api/state?room=TEST2\")",
+      "Bash(npm ls *)",
+      "Bash(pkill -f \"node server.js\")",
+      "Bash(PORT=3999 nohup node server.js)",
+      "Bash(node -e \"require\\('jsdom'\\); console.log\\('jsdom OK'\\)\")",
+      "Bash(curl -s --max-time 3 \"localhost:3999/api/state?room=TEST2\")",
+      "Bash(pkill -f 'node server.js')",
+      "Bash(pkill -f \"[n]ode server.js\")",
+      "Bash(node /tmp/e2e-test.js)",
+      "Bash(pkill -f \"[J]umbleGrid/server.js\")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

@@ -25,13 +25,19 @@ code. You both join the same room code and play on the same board.
 
 - **Join** with a name and a shared room code.
 - Pick **4×4** (classic dice) or **5×5** (Big Boggle dice) and hit **Start round**.
-- 3-minute rounds. Build words by **tapping adjacent tiles** (tap the last tile
-  again to undo) or just **type** and press Enter.
-- Words are claimed **first-come-first-served** — the shared *Words used* panel
-  on the right shows every word claimed so far, who got it, and its points.
-- Minimum word length: 3 letters on 4×4, 4 letters on 5×5. Scoring is standard
-  Boggle: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11. "Qu" counts as two letters.
-- Scores carry across rounds in the same room.
+- 3-minute rounds. Build words by **dragging across adjacent tiles** (drag back
+  one tile to undo, or tap the last tile again), tapping one at a time, or just
+  **typing** — the grid live-highlights every chain matching what you've typed,
+  narrowing as you go; if no chain exists the input flashes red (your text is kept).
+- The ⟲ / ⟳ buttons **vote to rotate the board**; when every player votes for
+  the same direction, the board rotates for everyone. Click again to withdraw.
+- During the round you see only **your own** word list (plus your opponent's
+  word *count*). At round end all lists are revealed: any word claimed by two
+  or more players is **cancelled**, and each player's remaining *unpaired*
+  words are tallied — **most unpaired words wins the round**, with points
+  (3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11) shown alongside.
+- Minimum word length: 3 letters on 4×4, 4 on 5×5. "Qu" counts as two letters.
+- Points from unpaired words accumulate across rounds in the same room.
 
 ## Dictionary (optional)
 

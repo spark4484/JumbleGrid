@@ -7,7 +7,16 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
-const ROUND_SECONDS = 180;
+const ROUND_SECONDS = Number(process.env.ROUND_SECONDS) || 180;
+
+// Never die silently — log and keep serving.
+process.on('uncaughtException', (err) => console.error('[fatal-ish] uncaught exception:', err));
+process.on('unhandledRejection', (err) => console.error('[fatal-ish] unhandled rejection:', err));
+
+// crypto.randomInt needs Node >= 14.10; fall back to Math.random just in case.
+const randInt = typeof crypto.randomInt === 'function'
+  ? (n) => crypto.randomInt(n)
+  : (n) => Math.floor(Math.random() * n);
 
 // ---------------------------------------------------------------------------
 // Optional dictionary. Drop an `words.txt` (one word per line) next to this
@@ -52,11 +61,11 @@ function rollGrid(size) {
   const dice = (size === 5 ? DICE_5 : DICE_4).slice();
   // Fisher–Yates shuffle of the dice, then roll each one.
   for (let i = dice.length - 1; i > 0; i--) {
-    const j = crypto.randomInt(i + 1);
+    const j = randInt(i + 1);
     [dice[i], dice[j]] = [dice[j], dice[i]];
   }
   return dice.map((die) => {
-    const face = die[crypto.randomInt(die.length)].toLowerCase();
+    const face = die[randInt(die.length)].toLowerCase();
     return face === 'q' ? 'qu' : face;
   });
 }
@@ -94,6 +103,19 @@ function canForm(word, grid, size) {
   return false;
 }
 
+// Rotate the whole board 90° left or right (same view for every player).
+function rotateGrid(grid, size, dir) {
+  const out = new Array(grid.length);
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      out[r * size + c] = dir === 'right'
+        ? grid[(size - 1 - c) * size + r]  // clockwise
+        : grid[c * size + (size - 1 - r)]; // counter-clockwise
+    }
+  }
+  return out;
+}
+
 // Standard Boggle scoring; 5x5 games require 4+ letter words.
 function scoreWord(word, size) {
   const len = word.length;
@@ -121,17 +143,23 @@ function getRoom(code) {
       grid: null,
       roundEndsAt: null,
       round: 0,
-      players: new Map(),      // id -> { id, name, score }
-      words: [],               // { word, playerId, playerName, points }
-      clients: new Set(),      // SSE responses
+      players: new Map(),      // id -> { id, name, score, scoreBase }
+      words: [],               // { word, playerId, playerName, points, cancelled? }
+      clients: new Set(),      // SSE responses (each tagged with .viewerId)
       endTimer: null,
+      rotateVotes: new Map(),  // playerId -> 'left' | 'right'
+      notice: null,            // { text, ts } — transient announcement
+      lastResult: null,        // end-of-round tally
     };
     rooms.set(code, room);
   }
   return room;
 }
 
-function publicState(room) {
+function publicState(room, viewerId) {
+  const playing = room.state === 'playing';
+  const countVotes = (dir) =>
+    [...room.players.keys()].filter((id) => room.rotateVotes.get(id) === dir).length;
   return {
     code: room.code,
     state: room.state,
@@ -141,16 +169,62 @@ function publicState(room) {
     round: room.round,
     minLen: room.size === 5 ? 4 : 3,
     players: [...room.players.values()].map((p) => ({ id: p.id, name: p.name, score: p.score })),
-    words: room.words,
+    // During play you only see your own list — otherwise you could peek at
+    // your opponent's words to dodge duplicates. Everything is revealed at the end.
+    words: playing ? room.words.filter((w) => w.playerId === viewerId) : room.words,
+    wordCounts: [...room.players.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      count: room.words.filter((w) => w.playerId === p.id).length,
+    })),
+    result: room.state === 'ended' ? room.lastResult : null,
+    rotate: {
+      left: countVotes('left'),
+      right: countVotes('right'),
+      total: room.players.size,
+      yours: room.rotateVotes.get(viewerId) || null,
+    },
+    notice: room.notice,
     hasDictionary: !!dictionary,
   };
 }
 
 function broadcast(room) {
-  const payload = `data: ${JSON.stringify(publicState(room))}\n\n`;
   for (const res of room.clients) {
-    res.write(payload);
+    res.write(`data: ${JSON.stringify(publicState(room, res.viewerId))}\n\n`);
   }
+}
+
+function setNotice(room, text) {
+  room.notice = { text, ts: Date.now() };
+}
+
+// Duplicate words cancel; the rest ("unpaired") count. Winner = most unpaired
+// words. Idempotent so a post-round veto can just re-run it.
+function finishRound(room) {
+  const counts = new Map();
+  for (const w of room.words) counts.set(w.word, (counts.get(w.word) || 0) + 1);
+  for (const w of room.words) w.cancelled = counts.get(w.word) >= 2;
+
+  const tally = [];
+  for (const p of room.players.values()) {
+    const mine = room.words.filter((w) => w.playerId === p.id);
+    const unpaired = mine.filter((w) => !w.cancelled);
+    const roundPoints = unpaired.reduce((s, w) => s + w.points, 0);
+    p.score = (p.scoreBase || 0) + roundPoints;
+    tally.push({
+      id: p.id,
+      name: p.name,
+      unpaired: unpaired.length,
+      cancelled: mine.length - unpaired.length,
+      roundPoints,
+    });
+  }
+  tally.sort((a, b) => b.unpaired - a.unpaired || b.roundPoints - a.roundPoints);
+  room.lastResult = {
+    players: tally,
+    winners: tally.length ? tally.filter((t) => t.unpaired === tally[0].unpaired).map((t) => t.name) : [],
+  };
 }
 
 function startRound(room, size) {
@@ -160,12 +234,17 @@ function startRound(room, size) {
   room.state = 'playing';
   room.round += 1;
   room.roundEndsAt = Date.now() + ROUND_SECONDS * 1000;
+  room.rotateVotes.clear();
+  room.lastResult = null;
+  for (const p of room.players.values()) p.scoreBase = p.score;
   if (room.endTimer) clearTimeout(room.endTimer);
   room.endTimer = setTimeout(() => {
     room.state = 'ended';
     room.roundEndsAt = null;
+    finishRound(room);
     broadcast(room);
   }, ROUND_SECONDS * 1000);
+  console.log(`[game] room ${room.code} round ${room.round} started (${room.size}x${room.size}): ${room.grid.join(' ')}`);
   broadcast(room);
 }
 
@@ -180,9 +259,9 @@ function submitWord(room, playerId, rawWord) {
   if (word.length < minLen) {
     return { ok: false, reason: `Words must be at least ${minLen} letters.` };
   }
-  const existing = room.words.find((w) => w.word === word);
-  if (existing) {
-    return { ok: false, reason: `"${word.toUpperCase()}" already used by ${existing.playerName}.` };
+  // Both players may claim the same word — duplicates cancel at round end.
+  if (room.words.some((w) => w.word === word && w.playerId === playerId)) {
+    return { ok: false, reason: `You already used "${word.toUpperCase()}".` };
   }
   if (!canForm(word, room.grid, room.size)) {
     return { ok: false, reason: `"${word.toUpperCase()}" can't be traced on this grid.` };
@@ -191,18 +270,45 @@ function submitWord(room, playerId, rawWord) {
     return { ok: false, reason: `"${word.toUpperCase()}" isn't in the dictionary.` };
   }
   const points = scoreWord(word, room.size);
-  player.score += points;
   room.words.unshift({ word, playerId, playerName: player.name, points });
   broadcast(room);
   return { ok: true, points };
 }
 
-function vetoWord(room, word) {
-  const idx = room.words.findIndex((w) => w.word === word);
+function vetoWord(room, word, requesterId) {
+  // During play you can only retract your own words (you can't see others').
+  const idx = room.words.findIndex((w) =>
+    w.word === word && (room.state !== 'playing' || w.playerId === requesterId));
   if (idx === -1) return { ok: false, reason: 'Word not found.' };
   const [removed] = room.words.splice(idx, 1);
-  const owner = room.players.get(removed.playerId);
-  if (owner) owner.score -= removed.points;
+  if (room.state === 'ended') {
+    finishRound(room); // recompute cancellations and scores
+    const requester = room.players.get(requesterId);
+    setNotice(room, `${requester ? requester.name : 'Someone'} vetoed "${removed.word.toUpperCase()}" — scores recomputed.`);
+  }
+  broadcast(room);
+  return { ok: true };
+}
+
+function voteRotate(room, playerId, dir) {
+  const player = room.players.get(playerId);
+  if (!player) return { ok: false, reason: 'You are not in this room.' };
+  if (room.state !== 'playing') return { ok: false, reason: 'No round in progress.' };
+  if (room.rotateVotes.get(playerId) === dir) {
+    room.rotateVotes.delete(playerId); // clicking again withdraws the vote
+    setNotice(room, `${player.name} withdrew their rotation vote.`);
+  } else {
+    room.rotateVotes.set(playerId, dir);
+    const votes = [...room.players.keys()].filter((id) => room.rotateVotes.get(id) === dir).length;
+    const total = room.players.size;
+    if (votes === total) {
+      room.grid = rotateGrid(room.grid, room.size, dir);
+      room.rotateVotes.clear();
+      setNotice(room, `Board rotated ${dir}!`);
+    } else {
+      setNotice(room, `${player.name} voted to rotate the board ${dir} (${votes}/${total}).`);
+    }
+  }
   broadcast(room);
   return { ok: true };
 }
@@ -231,7 +337,10 @@ function serveStatic(req, res, urlPath) {
       res.writeHead(404).end('Not found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+      'Cache-Control': 'no-cache', // always revalidate — stale client code causes confusing bugs
+    });
     res.end(data);
   });
 }
@@ -266,7 +375,20 @@ function normRoomCode(raw) {
   return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 }
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((err) => {
+    console.error(`[error] ${req.method} ${req.url}:`, err);
+    try {
+      if (!res.headersSent) {
+        sendJson(res, 500, { ok: false, reason: `Server error: ${err.message}` });
+      } else {
+        res.end();
+      }
+    } catch (_) { /* response already gone */ }
+  });
+});
+
+async function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
 
   // --- Server-sent events stream ---
@@ -277,20 +399,34 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const room = getRoom(code);
+    res.viewerId = url.searchParams.get('player') || null;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
-    res.write(`data: ${JSON.stringify(publicState(room))}\n\n`);
+    res.write(`data: ${JSON.stringify(publicState(room, res.viewerId))}\n\n`);
     room.clients.add(res);
+    console.log(`[sse] client connected to room ${code} (${room.clients.size} watching)`);
     // Heartbeat keeps the tunnel connection alive.
     const ping = setInterval(() => res.write(': ping\n\n'), 25000);
     req.on('close', () => {
       clearInterval(ping);
       room.clients.delete(res);
+      console.log(`[sse] client left room ${code} (${room.clients.size} watching)`);
     });
+    return;
+  }
+
+  // --- Polling fallback: current room state as plain JSON ---
+  if (req.method === 'GET' && url.pathname === '/api/state') {
+    const code = normRoomCode(url.searchParams.get('room'));
+    if (!code) {
+      sendJson(res, 400, { ok: false, reason: 'Missing room' });
+      return;
+    }
+    sendJson(res, 200, publicState(getRoom(code), url.searchParams.get('player') || null));
     return;
   }
 
@@ -309,6 +445,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const room = getRoom(code);
+    console.log(`[api] ${url.pathname} room=${code}`);
 
     switch (url.pathname) {
       case '/api/join': {
@@ -322,7 +459,7 @@ const server = http.createServer(async (req, res) => {
           room.players.get(id).name = name; // rejoin, possibly renamed
         } else {
           id = crypto.randomBytes(8).toString('hex');
-          room.players.set(id, { id, name, score: 0 });
+          room.players.set(id, { id, name, score: 0, scoreBase: 0 });
         }
         broadcast(room);
         sendJson(res, 200, { ok: true, playerId: id, room: code });
@@ -348,7 +485,12 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         const word = String(body.word || '').toLowerCase().replace(/[^a-z]/g, '');
-        sendJson(res, 200, vetoWord(room, word));
+        sendJson(res, 200, vetoWord(room, word, body.playerId));
+        return;
+      }
+      case '/api/rotate': {
+        const dir = body.dir === 'left' ? 'left' : 'right';
+        sendJson(res, 200, voteRotate(room, body.playerId, dir));
         return;
       }
       default:
@@ -364,6 +506,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.writeHead(405).end('Method not allowed');
+}
+
+server.on('error', (err) => {
+  console.error(err.code === 'EADDRINUSE'
+    ? `Port ${PORT} is already in use — is another copy of the server running?`
+    : err);
+  process.exit(1);
 });
 
 server.listen(PORT, () => {

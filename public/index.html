@@ -10,6 +10,7 @@
   <header>
     <h1>Jumble<span>Grid</span></h1>
     <div id="room-badge" class="hidden">room <strong id="room-code-label"></strong></div>
+    <div id="conn-badge" class="hidden">● connecting…</div>
   </header>
 
   <!-- ============ Lobby ============ -->
@@ -39,6 +40,10 @@
 
         <div id="status-bar">
           <div id="timer" class="hidden"></div>
+          <div id="rotate-controls" class="hidden">
+            <button id="rot-left" class="rot" type="button" title="Vote to rotate the board left">⟲<span class="rot-n"></span></button>
+            <button id="rot-right" class="rot" type="button" title="Vote to rotate the board right">⟳<span class="rot-n"></span></button>
+          </div>
           <div id="round-controls">
             <span class="size-picker">
               <label><input type="radio" name="size" value="4" checked> 4×4</label>
@@ -63,8 +68,9 @@
       </div>
 
       <aside class="words-col">
-        <h3>Words used <span id="word-count"></span></h3>
+        <h3><span id="words-title">Words</span> <span id="word-count"></span></h3>
         <p class="hint" id="min-len-hint"></p>
+        <p class="hint" id="opp-counts"></p>
         <ul id="word-list"></ul>
       </aside>
     </div>
