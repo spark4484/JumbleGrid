@@ -34,6 +34,8 @@
   let timerInterval = null;
   let toastTimeout = null;
   let lastNoticeTs = -1;  // -1 = haven't seen any state yet
+  let lastSyncedMode = null; // keep the pickers in step with the room's settings
+  let lastSyncedSize = null;
 
   // ------------------------------------------------------------------ lobby
   const saved = JSON.parse(localStorage.getItem('jumblegrid') || '{}');
@@ -484,6 +486,18 @@
 
     // Mode picker only matters when a dictionary is loaded
     $('#mode-picker').classList.toggle('hidden', !state.hasDictionary);
+
+    // Sync the pickers whenever the room's settings change (e.g. another
+    // player started a challenge round) so "New round" repeats the same setup.
+    // Local changes you haven't submitted yet are left alone.
+    if (state.mode !== lastSyncedMode || state.size !== lastSyncedSize) {
+      lastSyncedMode = state.mode;
+      lastSyncedSize = state.size;
+      const modeRadio = document.querySelector(`input[name="mode"][value="${state.mode}"]`);
+      if (modeRadio) modeRadio.checked = true;
+      const sizeRadio = document.querySelector(`input[name="size"][value="${state.size}"]`);
+      if (sizeRadio) sizeRadio.checked = true;
+    }
 
     // Rotation vote buttons
     rotateControls.classList.toggle('hidden', !playing);

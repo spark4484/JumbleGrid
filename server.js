@@ -231,8 +231,11 @@ function finishRound(room) {
 }
 
 function startRound(room, size, mode) {
-  room.mode = (mode === 'open' || !dictionary) ? 'open' : 'dict';
-  room.size = size === 5 ? 5 : 4;
+  // Only change mode/size when explicitly given — the room's current settings
+  // are the default, so "New round" keeps playing the same way.
+  if (mode === 'open' || mode === 'dict') room.mode = mode;
+  if (!dictionary) room.mode = 'open';
+  if (size === 4 || size === 5) room.size = size;
   room.grid = rollGrid(room.size);
   room.words = [];
   room.state = 'playing';
